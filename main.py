@@ -33,9 +33,6 @@ async def main():
     # Инициализация
     logger.info("🦊 Запуск Dori...")
     
-    # Создаём папки для медиа
-    create_media_folders()
-    
     # Загружаем фразы
     load_phrases()
     
