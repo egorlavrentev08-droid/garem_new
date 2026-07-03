@@ -36,22 +36,25 @@ logger = logging.getLogger(__name__)
 
 async def chat_filter(message: types.Message) -> bool:
     """
-    Фильтр: разрешён ли чат и зарегистрирован ли пользователь (для ЛС)
+    Фильтр: бот работает ТОЛЬКО в админском чате и ЛС
     """
-    # 1. Только основные чаты
-    if message.chat.id not in [CHAT_ID, ADMIN_CHAT_ID]:
-        if message.chat.type == "private":
-            user = await get_user(message.from_user.id)
-            if not user:
-                await message.answer(
-                    "🦊 Привет! Чтобы я тебя запомнил, "
-                    "напиши сначала в основном чате: @Gar3mDi"
-                )
-                return False
-            return True
-        return False
+    # 1. ЛС — проверяем регистрацию
+    if message.chat.type == "private":
+        user = await get_user(message.from_user.id)
+        if not user:
+            await message.answer(
+                "🦊 Привет! Чтобы я тебя запомнил, "
+                "напиши сначала в основном чате: @Gar3mDi"
+            )
+            return False
+        return True
     
-    return True
+    # 2. ТОЛЬКО админский чат (НЕ основной!)
+    if message.chat.id == ADMIN_CHAT_ID:
+        return True
+    
+    # 3. Все остальные чаты — игнор
+    return False
 
 
 # ============================================================
