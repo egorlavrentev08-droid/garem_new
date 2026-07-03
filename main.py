@@ -9,7 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 
 from config import BOT_TOKEN, CHAT_ID, ADMIN_CHAT_ID, ADMIN_IDS
 from db import init_db, award_daily_top, award_weekly_top, reset_daily_messages, check_expired_redemptions
-from core import load_phrases, create_media_folders, check_inactive_users, handle_inactive_user, get_random_phrase
+from core import load_phrases, check_inactive_users, handle_inactive_user, get_random_phrase
 from bot import register_handlers
 
 # ============================================================
