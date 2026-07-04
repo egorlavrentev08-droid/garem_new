@@ -28,6 +28,10 @@ from core import (
     admin_give_coins, admin_set_shield, admin_set_rank
 )
 
+# bot.py - ДОБАВИТЬ В НАЧАЛО (ПОСЛЕ ИМПОРТОВ)
+
+from test import cmd_test
+
 logger = logging.getLogger(__name__)
 
 
