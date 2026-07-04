@@ -24,6 +24,10 @@ from db import (
     add_reward_history
 )
 
+# core.py - ДОБАВИТЬ В НАЧАЛО (ПОСЛЕ ИМПОРТОВ)
+
+from test import get_time_since_hours, is_test_mode
+
 logger = logging.getLogger(__name__)
 
 # ============================================================
