@@ -155,3 +155,4 @@ def get_rank_by_streak(streak: int) -> dict:
 # ============================================================
 
 TIME_MULTIPLIER = 3600  # 1 час = 1 секунда (3600 / 3600 = 1)
+TEST_MOD = False
