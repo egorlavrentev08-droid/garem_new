@@ -24,7 +24,7 @@ from core import (
     process_user_message, get_user_profile, 
     buy_shield, activate_shield,
     get_top_streak_text, get_top_messages_text,
-    get_random_picture, get_random_meme,
+    get_random_picture,
     get_random_phrase, load_phrases,
     admin_give_coins, admin_set_shield, admin_set_rank
 )
