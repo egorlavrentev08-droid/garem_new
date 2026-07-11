@@ -64,20 +64,24 @@ async def scheduler_loop(bot: Bot):
         try:
             now = datetime.now()
             
+            # Проверка неактивных — каждые 30 минут
             if (now - last_inactive_check).total_seconds() >= 1800:
                 last_inactive_check = now
                 await check_inactive_task(bot)
             
-            if now.hour == 0 and now.minute == 0:
-                if (now - last_daily_reset).days >= 1:
+            # Ежедневный сброс — если прошло больше 23 часов, и сейчас 00:00-00:05
+            if (now - last_daily_reset).total_seconds() >= 82800:  # 23 часа
+                if now.hour == 0 and now.minute <= 5:
                     last_daily_reset = now
                     await daily_reset_task(bot)
             
-            if now.weekday() == 6 and now.hour == 23 and now.minute == 59:
-                if (now - last_weekly_reset).days >= 7:
+            # Еженедельный сброс — если прошло больше 6 дней, и сейчас воскресенье 23:00-23:05
+            if (now - last_weekly_reset).total_seconds() >= 518400:  # 6 дней
+                if now.weekday() == 6 and now.hour == 23 and now.minute <= 5:
                     last_weekly_reset = now
                     await weekly_reward_task(bot)
             
+            # Проверка искуплений — каждую минуту
             if now.minute == 0:
                 last_redemption_check = now
                 await check_redemptions_task(bot)
