@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 async def run_migration():
     if not os.path.exists(DB_PATH):
-        logger.warning(f"⚠️ База данных не найдена: {DB_PATH}")
+        logger.warning(f"⚠️ База данных не найдена: {DB_PATH}. Скрипт миграции пропущен.")
         return False
     
     async with aiosqlite.connect(DB_PATH) as db:
@@ -23,34 +23,35 @@ async def run_migration():
             'is_banned': 'INTEGER DEFAULT 0',
             'last_ping': 'TEXT',
             'redemption_failed_notified': 'INTEGER DEFAULT 0',
-            'tg_name': 'TEXT',  # Новая колонка для Имени + Фамилии из TG
+            'tg_name': 'TEXT',  # Колонка для Имени + Фамилии из Telegram
+            'rank_frozen': 'INTEGER DEFAULT 0'  # Колонка фиксации ручных рангов админа
         }
         
-        logger.info("📋 Проверка колонок в таблице users...")
+        logger.info("📋 Проверка структуры таблицы users...")
         
         for col_name, col_type in new_columns.items():
             if col_name not in existing_columns:
                 try:
                     await db.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
                     await db.commit()
-                    logger.info(f"  ✅ Добавлена колонка: {col_name}")
+                    logger.info(f"  ✅ Добавлена отсутствующая колонка: {col_name}")
                 except Exception as e:
-                    logger.error(f"  ❌ Ошибка: {e}")
+                    logger.error(f"  ❌ Ошибка добавления колонки {col_name}: {e}")
             else:
                 logger.info(f"  ⏭️ Колонка уже существует: {col_name}")
         
-        # Очищаем поле name у тех, кто его не менял (где name равен юзернейму или id),
-        # чтобы бот автоматически заменил это на настоящее имя из Telegram.
-        await db.execute("UPDATE users SET name = NULL WHERE name = telegram_username OR name = CAST(user_id AS TEXT)")
+        # Сброс имен-заглушек у пользователей для получения актуальных данных из TG
+        await db.execute("""
+            UPDATE users 
+            SET name = NULL 
+            WHERE name = telegram_username OR name = CAST(user_id AS TEXT)
+        """)
         
+        # Корректировка значений по умолчанию для пустых ячеек
         await db.execute("UPDATE users SET is_banned = 0 WHERE is_banned IS NULL")
         await db.execute("UPDATE users SET redemption_failed_notified = 0 WHERE redemption_failed_notified IS NULL")
+        await db.execute("UPDATE users SET rank_frozen = 0 WHERE rank_frozen IS NULL")
         await db.commit()
         
-        logger.info("✅ Миграция завершена!")
+        logger.info("✅ Все миграции успешно применены!")
         return True
-
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(run_migration())
