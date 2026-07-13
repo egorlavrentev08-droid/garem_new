@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
 
@@ -43,88 +43,95 @@ async def main():
         types.BotCommand(command="redemption", description="Статус искупления"),
     ])
     
+    # Запускаем планировщик как фоновую задачу
     asyncio.create_task(scheduler_loop(bot))
     
-    logger.info("✅ Бот запущен!")
-    await dp.start_polling(bot)
+    logger.info("🚀 Бот успешно запущен и готов к работе!")
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
 
 async def scheduler_loop(bot: Bot):
     logger.info("⏰ Планировщик запущен")
     
-    last_inactive_check = datetime.now() - timedelta(hours=1)
-    last_daily_reset = datetime.now() - timedelta(days=1)
-    last_weekly_reset = datetime.now() - timedelta(days=7)
-    last_redemption_check = datetime.now() - timedelta(hours=1)
+    # Жестко задаем часовой пояс МСК (UTC+3)
+    MSK = timezone(timedelta(hours=3))
+    
+    last_inactive_check = datetime.now(MSK)
+    
+    # Флаги-предохранители: гарантируют, что задача выполнится ровно 1 раз
+    last_daily_run = None
+    last_weekly_run = None
+    last_redemption_run = None
     
     while True:
         try:
-            now = datetime.now()
+            now = datetime.now(MSK)
+            current_date = now.strftime("%Y-%m-%d")
+            current_hour = now.strftime("%Y-%m-%d %H")
             
+            # 1. Проверка неактивных пользователей (каждые 30 минут)
             if (now - last_inactive_check).total_seconds() >= 1800:
                 last_inactive_check = now
-                await check_inactive_task(bot)
+                asyncio.create_task(check_inactive_task(bot))
             
-            if (now - last_daily_reset).total_seconds() >= 82800:
-                if now.hour == 0 and now.minute <= 5:
-                    last_daily_reset = now
-                    await daily_reset_task(bot)
+            # 2. Ежедневный топ сообщений (Строго в 00:00 МСК)
+            if now.hour == 0 and now.minute == 0:
+                # Предохранитель от повторений в эту минуту
+                if last_daily_run != current_date:
+                    last_daily_run = current_date
+                    asyncio.create_task(daily_reset_task(bot))
             
-            if (now - last_weekly_reset).total_seconds() >= 518400:
-                if now.weekday() == 6 and now.hour == 23 and now.minute <= 5:
-                    last_weekly_reset = now
-                    await weekly_reward_task(bot)
+            # 3. Еженедельный топ стриков (Воскресенье, строго в 23:00 МСК)
+            # now.weekday() == 6 — это воскресенье
+            if now.weekday() == 6 and now.hour == 23 and now.minute == 0:
+                # Предохранитель от повторений в эту минуту
+                if last_weekly_run != current_date:
+                    last_weekly_run = current_date
+                    asyncio.create_task(weekly_reward_task(bot))
             
+            # 4. Проверка искуплений (Каждый час ровно в 00 минут)
             if now.minute == 0:
-                last_redemption_check = now
-                await check_redemptions_task(bot)
+                # Предохранитель от повторений (раз в час)
+                if last_redemption_run != current_hour:
+                    last_redemption_run = current_hour
+                    asyncio.create_task(check_redemptions_task(bot))
             
         except Exception as e:
             logger.error(f"❌ Ошибка в планировщике: {e}")
         
-        await asyncio.sleep(30)
+        # Спим 10 секунд. Это идеальный баланс: 
+        # не нагружает процессор и бот физически не сможет пропустить нужную минуту.
+        await asyncio.sleep(10)
 
 
 async def check_inactive_task(bot: Bot):
-    inactive = await check_inactive_users()
+    logger.info("⏳ Проверка неактивных пользователей...")
+    inactive_users = await check_inactive_users()
     
-    if not inactive:
-        return
-    
-    logger.info(f"📊 Найдено неактивных: {len(inactive)}")
-    
-    for data in inactive:
-        user = data['user']
-        user_id = user['user_id']
-        trigger = data['trigger']
-        mood = data['mood']
-        
-        result = await handle_inactive_user(user_id, trigger, mood)
-        
-        if result and result.get('text'):
-            kb = None
+    for user_id, days in inactive_users:
+        res = await handle_inactive_user(user_id, days)
+        if res:
             try:
-                kb = types.InlineKeyboardMarkup(inline_keyboard=[
-                    [types.InlineKeyboardButton(text="🗣 В чат", url="https://t.me/Gar3mDi")]
-                ])
-            except:
-                pass
-            
-            try:
-                await bot.send_message(
-                    user_id,
-                    result['text'],
-                    reply_markup=kb
-                )
-                logger.info(f"📨 Уведомление отправлено {user_id}")
-                
-                if "сброшен" in result['text']:
+                from db import get_user
+                user = await get_user(user_id)
+                if user:
                     name = user.get('name', user.get('telegram_username', 'Кто-то'))
-                    await bot.send_message(
-                        CHAT_ID,
-                        f"😱 **{name}** потерял стрик!\n"
-                        f"Но может восстановить — 200 сообщений за 24 часа. 👀"
-                    )
+                    
+                    # Личное сообщение пользователю
+                    await bot.send_message(user_id, res['private_text'])
+                    
+                    # Сообщение в общий чат
+                    await bot.send_message(CHAT_ID, res['chat_text'])
+                    
+                    if res.get('lost_streak'):
+                        await bot.send_message(
+                            CHAT_ID,
+                            f"😱 **{name}** потерял стрик!\n"
+                            f"Но может восстановить — 200 сообщений за 24 часа. 👀"
+                        )
             except Exception as e:
                 logger.error(f"❌ Ошибка отправки {user_id}: {e}")
 
@@ -161,11 +168,11 @@ async def check_redemptions_task(bot: Bot):
                     f"⏰ **{name}** не успел восстановить стрик. Начинает с нуля. 😈"
                 )
         except Exception as e:
-            logger.error(f"❌ Ошибка при проверке искупления {user_id}: {e}")
+            logger.error(f"❌ Ошибка отправки уведомления об искуплении для {user_id}: {e}")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
         asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("🛑 Бот остановлен")
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("🦊 Бот остановлен")
